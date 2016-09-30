@@ -19,6 +19,27 @@
  */
 package org.sonar.plugins.scm.perforce;
 
+import javax.annotation.CheckForNull;
+import javax.annotation.Nonnull;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.sonar.api.batch.fs.FileSystem;
+import org.sonar.api.batch.fs.InputFile;
+import org.sonar.api.batch.scm.BlameCommand;
+import org.sonar.api.batch.scm.BlameLine;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.perforce.p4java.core.IChangelist;
 import com.perforce.p4java.core.file.FileSpecOpStatus;
@@ -33,25 +54,6 @@ import com.perforce.p4java.impl.generic.core.file.FileSpec;
 import com.perforce.p4java.option.server.GetFileAnnotationsOptions;
 import com.perforce.p4java.option.server.GetRevisionHistoryOptions;
 import com.perforce.p4java.server.IOptionsServer;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import javax.annotation.CheckForNull;
-import javax.annotation.Nonnull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.sonar.api.batch.fs.FileSystem;
-import org.sonar.api.batch.fs.InputFile;
-import org.sonar.api.batch.scm.BlameCommand;
-import org.sonar.api.batch.scm.BlameLine;
 
 public class PerforceBlameCommand extends BlameCommand {
 
@@ -105,13 +107,17 @@ public class PerforceBlameCommand extends BlameCommand {
   private Future<Void> submitTask(ExecutorService executorService, final IOptionsServer server, final InputFile inputFile, final BlameOutput output) {
     return executorService.submit(new Callable<Void>() {
       @Override
-      public Void call() throws P4JavaException {
+      public Void call() throws P4JavaException
+      {
         int attempts = 0;
+        GetFileAnnotationsOptions annotationOptions = getFileAnnotationOptions();
         while (attempts < MAX_ATTEMPTS) {
           try {
-            blame(inputFile, server, output);
+            blame(inputFile, server, output, annotationOptions);
             break;
           } catch (P4JavaException e) {
+            annotationOptions.setFollowAllIntegrations(false);
+            annotationOptions.setIgnoreWhitespaceChanges(false);
             if (++attempts >= MAX_ATTEMPTS) {
               throw e;
             }
@@ -124,11 +130,15 @@ public class PerforceBlameCommand extends BlameCommand {
 
   @VisibleForTesting
   void blame(InputFile inputFile, IOptionsServer server, BlameOutput output) throws P4JavaException {
+    blame(inputFile, server, output, getFileAnnotationOptions());
+  }
+
+  private void blame(InputFile inputFile, IOptionsServer server, BlameOutput output, GetFileAnnotationsOptions fileAnnotationOptions) throws P4JavaException {
     IFileSpec fileSpec = createFileSpec(inputFile);
     List<IFileSpec> fileSpecs = Collections.singletonList(fileSpec);
 
     // Get file annotations
-    List<IFileAnnotation> fileAnnotations = server.getFileAnnotations(fileSpecs, getFileAnnotationOptions());
+    List<IFileAnnotation> fileAnnotations = server.getFileAnnotations(fileSpecs, fileAnnotationOptions);
     if (fileAnnotations.size() == 1 && fileAnnotations.get(0).getDepotPath() == null) {
       LOG.debug("File " + inputFile + " is not submitted. Skipping it.");
       return;
