@@ -19,6 +19,18 @@
  */
 package org.sonar.plugins.scm.perforce;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.io.File;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Properties;
+
+import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.sonar.api.utils.MessageException;
+
 import com.perforce.p4java.client.IClient;
 import com.perforce.p4java.client.IClientViewMapping;
 import com.perforce.p4java.core.file.FileSpecBuilder;
@@ -30,20 +42,11 @@ import com.perforce.p4java.impl.generic.client.ClientView.ClientViewMapping;
 import com.perforce.p4java.impl.mapbased.rpc.RpcPropertyDefs;
 import com.perforce.p4java.impl.mapbased.rpc.sys.helper.RpcSystemFileCommandsHelper;
 import com.perforce.p4java.option.UsageOptions;
+import com.perforce.p4java.option.server.LoginOptions;
 import com.perforce.p4java.option.server.TrustOptions;
 import com.perforce.p4java.server.IOptionsServer;
 import com.perforce.p4java.server.ServerFactory;
 import com.perforce.p4java.server.callback.ICommandCallback;
-import java.io.File;
-import java.net.URISyntaxException;
-import java.util.List;
-import java.util.Properties;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import org.apache.commons.lang.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.sonar.api.utils.MessageException;
 
 public class PerforceExecutor {
 
@@ -126,7 +129,8 @@ public class PerforceExecutor {
         if (!isLogin(server)) {
           // Login to the server with a password.
           // Password can be null if it is not needed (i.e. SSO logins).
-          server.login(config.password(), null);
+          LoginOptions options = new LoginOptions(false, config.writeTickets());
+          server.login(config.password(), options);
         }
       }
     } catch (URISyntaxException e) {
