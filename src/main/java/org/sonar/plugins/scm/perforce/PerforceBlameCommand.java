@@ -58,7 +58,8 @@ import com.perforce.p4java.server.IOptionsServer;
 public class PerforceBlameCommand extends BlameCommand {
 
   private static final Logger LOG = LoggerFactory.getLogger(PerforceBlameCommand.class);
-  private static final int MAX_ATTEMPTS = 3;
+  @VisibleForTesting
+  static final int MAX_ATTEMPTS = 3;
 
   private final PerforceConfiguration config;
   private final Map<Integer, IFileRevisionData> revisionDataByChangelistId = new ConcurrentHashMap<>();
@@ -107,25 +108,29 @@ public class PerforceBlameCommand extends BlameCommand {
   private Future<Void> submitTask(ExecutorService executorService, final IOptionsServer server, final InputFile inputFile, final BlameOutput output) {
     return executorService.submit(new Callable<Void>() {
       @Override
-      public Void call() throws P4JavaException
-      {
-        int attempts = 0;
-        GetFileAnnotationsOptions annotationOptions = getFileAnnotationOptions();
-        while (attempts < MAX_ATTEMPTS) {
-          try {
-            blame(inputFile, server, output, annotationOptions);
-            break;
-          } catch (P4JavaException e) {
-            annotationOptions.setFollowAllIntegrations(false);
-            annotationOptions.setIgnoreWhitespaceChanges(false);
-            if (++attempts >= MAX_ATTEMPTS) {
-              throw e;
-            }
-          }
-        }
-        return null;
+      public Void call() throws P4JavaException {
+        return tryBlame(inputFile, server, output);
       }
     });
+  }
+
+  @VisibleForTesting
+  Void tryBlame(InputFile inputFile, IOptionsServer server, BlameOutput output) throws P4JavaException {
+    int attempts = 0;
+    GetFileAnnotationsOptions annotationOptions = getFileAnnotationOptions();
+    while (attempts < MAX_ATTEMPTS) {
+      try {
+        blame(inputFile, server, output, annotationOptions);
+        break;
+      } catch (P4JavaException e) {
+        annotationOptions.setFollowAllIntegrations(false);
+        annotationOptions.setIgnoreWhitespaceChanges(false);
+        if (++attempts >= MAX_ATTEMPTS) {
+          throw e;
+        }
+      }
+    }
+    return null;
   }
 
   @VisibleForTesting
